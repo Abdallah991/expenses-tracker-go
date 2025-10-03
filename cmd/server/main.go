@@ -15,15 +15,20 @@ const (
 )
 
 func main() {
-	// 1. **Setup the Router/Multiplexer**
+
+	// initialize database connection
+	handlers.InitDB()
+
+	// Setup the Router/Multiplexer**
 	mux := http.NewServeMux()
 
-	// 2. **Define Routes**
+	// * Define Routes
 	// Register the StatusHandler function for GET requests to the /status path.
 	mux.HandleFunc("/status", handlers.StatusHandler)
+	// Register the transactions API route
+	mux.HandleFunc("/transactions", handlers.GetTransactionsHandler)
 
-	// 3. **Configure the Server**
-	// Use an http.Server struct for fine-grained control over server settings.
+	// Configure the Server
 	srv := &http.Server{
 		Addr:         port,
 		Handler:      mux,
@@ -32,7 +37,7 @@ func main() {
 		IdleTimeout:  120 * time.Second, // Maximum amount of time to wait for the next request when keep-alives are enabled
 	}
 
-	// 4. **Start the Server**
+	// Start the Server
 	fmt.Printf("✅ Starting server on port %s...\n", port)
 
 	// log.Fatal is used here because if the server fails to start, we want the application to exit.
