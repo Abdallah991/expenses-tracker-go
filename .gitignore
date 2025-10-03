@@ -1,0 +1,20 @@
+# Binaries for programs and plugins
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*test
+
+# Output files from 'go build'
+/bin/
+
+# Dependencies
+/vendor/
+
+# Go module cache (usually in $GOPATH/pkg/mod)
+/pkg/
+
+# Environment-specific files
+.env
