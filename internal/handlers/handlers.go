@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+
+	// add these specific imports
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 // Global database connection pool (initialize in main)
@@ -39,8 +43,17 @@ func StatusHandler(w http.ResponseWriter, r *http.Request) {
 
 // ? initDB establishes the database connection. Call this from main.go
 func InitDB() {
+	// Load values from .env file into environment variables
+	e := godotenv.Load()
+	if e != nil {
+		// This is usually fine if running in a non-dev environment
+		// that uses real environment vars.
+		fmt.Println("Could not load .env file:", e)
+	}
 	// ! its not connecting
 	connStr := os.Getenv("DATABASE_URL")
+
+	fmt.Println("This is the database URL", connStr)
 
 	if connStr == "" {
 		// Log a fatal error or panic if the connection string is missing
