@@ -27,6 +27,8 @@ func main() {
 	mux.HandleFunc("/status", handlers.StatusHandler)
 	// Register the transactions API route
 	mux.HandleFunc("/transactions", handlers.GetTransactionsHandler)
+	// transactions (To create a new transaction)
+	mux.HandleFunc("/transaction", handlers.CreateTransactionHandler)
 
 	// Configure the Server
 	srv := &http.Server{

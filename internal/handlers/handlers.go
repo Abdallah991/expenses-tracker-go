@@ -114,3 +114,56 @@ func GetTransactionsHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(transactions)
 }
+
+// CreateTransactionHandler handles POST requests to insert a new transaction.
+func CreateTransactionHandler(w http.ResponseWriter, r *http.Request) {
+	// 1. Check HTTP Method
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		w.Write([]byte(`{"error": "Method not allowed. Only POST is supported."}`))
+		return
+	}
+
+	// 2. Decode the Request Body
+	var t Transaction
+	// Ensure we only read a reasonable amount of data to prevent abuse
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
+
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&t); err != nil {
+		http.Error(w, "Invalid request payload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Since 'id' is SERIAL (auto-generated) in the database, we only use 'Amount' for insert.
+	// Ensure amount is non-zero (simple validation)
+	if t.Amount == 0 {
+		http.Error(w, "Transaction amount cannot be zero.", http.StatusBadRequest)
+		return
+	}
+
+	// 3. Execute INSERT Query
+	// The RETURNING id clause is crucial to get the auto-generated ID back
+	sqlStatement := `
+        INSERT INTO transaction (amount)
+        VALUES ($1)
+        RETURNING id`
+
+	// Use DB.QueryRow for single row return (the new ID)
+	err := DB.QueryRow(sqlStatement, t.Amount).Scan(&t.ID)
+
+	if err != nil {
+		// Log the detailed error (for server logs) but return a generic 500
+		fmt.Printf("Error inserting transaction: %v\n", err)
+		http.Error(w, "Failed to insert transaction into database.", http.StatusInternalServerError)
+		return
+	}
+
+	// 4. Respond with the Created Transaction
+	w.Header().Set("Content-Type", "application/json")
+	// Use 201 Created status code for successful resource creation
+	w.WriteHeader(http.StatusCreated)
+
+	// Respond with the transaction, now including the auto-generated ID
+	json.NewEncoder(w).Encode(t)
+}
