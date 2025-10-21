@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"regexp"
 	"strings"
 
@@ -130,4 +131,10 @@ func hasRepeatedChars(password string) bool {
 	}
 
 	return false
+}
+
+// IsPasswordValidationError checks if an error is a password validation error
+func IsPasswordValidationError(err error) bool {
+	var validationErr *PasswordValidationError
+	return errors.As(err, &validationErr)
 }
