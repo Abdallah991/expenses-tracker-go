@@ -333,7 +333,7 @@ func TestContextKeyCollisionPrevention(t *testing.T) {
 
 	// Set values with different key types
 	ctx = context.WithValue(ctx, UserIDKey, 123)
-	ctx = context.WithValue(ctx, "user_id", "string-value") // Different type
+	ctx = context.WithValue(ctx, "user_id", "value-for-testing")
 
 	// Retrieve with our typed key
 	userID, err := GetUserIDFromContext(ctx)
