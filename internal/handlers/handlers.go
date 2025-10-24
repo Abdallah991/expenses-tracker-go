@@ -8,6 +8,8 @@ import (
 	"os"
 
 	// add these specific imports
+	"expenses-tracker-go/internal/auth"
+
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -75,7 +77,7 @@ func InitDB() {
 	fmt.Println("✅ Successfully connected to the PostgreSQL database!")
 }
 
-// GetTransactionsHandler fetches all transactions from the database.
+// GetTransactionsHandler fetches all transactions from the database for the authenticated user.
 func GetTransactionsHandler(w http.ResponseWriter, r *http.Request) {
 	// Ensure it's a GET request
 	if r.Method != http.MethodGet {
@@ -84,8 +86,15 @@ func GetTransactionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Query the database
-	rows, err := DB.Query("SELECT id, amount FROM transaction ORDER BY id DESC")
+	// Get user ID from context (set by auth middleware)
+	userID, err := auth.GetUserIDFromContext(r.Context())
+	if err != nil {
+		http.Error(w, "Authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	// Query the database for user's transactions only
+	rows, err := DB.Query("SELECT id, amount, user_id FROM transaction WHERE user_id = $1 ORDER BY id DESC", userID)
 	if err != nil {
 		http.Error(w, "Database query failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -97,7 +106,7 @@ func GetTransactionsHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var t Transaction
 		// Scan the values from the current row into the Transaction struct
-		if err := rows.Scan(&t.ID, &t.Amount); err != nil {
+		if err := rows.Scan(&t.ID, &t.Amount, &t.UserID); err != nil {
 			http.Error(w, "Error scanning transaction row: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -115,12 +124,19 @@ func GetTransactionsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(transactions)
 }
 
-// CreateTransactionHandler handles POST requests to insert a new transaction.
+// CreateTransactionHandler handles POST requests to insert a new transaction for the authenticated user.
 func CreateTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	// 1. Check HTTP Method
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		w.Write([]byte(`{"error": "Method not allowed. Only POST is supported."}`))
+		return
+	}
+
+	// Get user ID from context (set by auth middleware)
+	userID, err := auth.GetUserIDFromContext(r.Context())
+	if err != nil {
+		http.Error(w, "Authentication required", http.StatusUnauthorized)
 		return
 	}
 
@@ -145,12 +161,12 @@ func CreateTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	// 3. Execute INSERT Query
 	// The RETURNING id clause is crucial to get the auto-generated ID back
 	sqlStatement := `
-        INSERT INTO transaction (amount)
-        VALUES ($1)
+        INSERT INTO transaction (amount, user_id)
+        VALUES ($1, $2)
         RETURNING id`
 
 	// Use DB.QueryRow for single row return (the new ID)
-	err := DB.QueryRow(sqlStatement, t.Amount).Scan(&t.ID)
+	err = DB.QueryRow(sqlStatement, t.Amount, userID).Scan(&t.ID)
 
 	if err != nil {
 		// Log the detailed error (for server logs) but return a generic 500
@@ -159,11 +175,14 @@ func CreateTransactionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set the user ID in the response
+	t.UserID = userID
+
 	// 4. Respond with the Created Transaction
 	w.Header().Set("Content-Type", "application/json")
 	// Use 201 Created status code for successful resource creation
 	w.WriteHeader(http.StatusCreated)
 
-	// Respond with the transaction, now including the auto-generated ID
+	// Respond with the transaction, now including the auto-generated ID and user ID
 	json.NewEncoder(w).Encode(t)
 }
