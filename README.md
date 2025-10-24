@@ -1,39 +1,49 @@
 # Expenses Tracker Go
 
-A simple REST API built with Go for tracking financial transactions. This application provides endpoints to create and retrieve transactions stored in a PostgreSQL database.
+A secure REST API built with Go for tracking financial transactions with JWT-based authentication, email verification, and advanced security features.
 
 ## Features
 
-- **Health Check**: `/status` endpoint to verify the application is running
-- **Transaction Management**:
-  - Create new transactions via POST `/transaction`
-  - Retrieve all transactions via GET `/transactions`
-- **Database Integration**: PostgreSQL database with connection pooling
-- **Environment Configuration**: Uses `.env` file for database configuration
+### 🔐 Authentication & Security
+
+- **JWT-based Authentication**: Secure access and refresh tokens
+- **Email Verification**: Required before account activation
+- **Password Reset**: Secure token-based password reset flow
+- **Rate Limiting**: Protection against brute force attacks
+- **Account Lockout**: Automatic lockout after failed login attempts
+- **Password Security**: bcrypt hashing with complexity requirements
+
+### 💰 Transaction Management
+
+- **User-specific Transactions**: Each user sees only their own transactions
+- **Create Transactions**: POST `/transaction` (authenticated)
+- **Retrieve Transactions**: GET `/transactions` (authenticated)
+- **Database Integration**: PostgreSQL with proper indexing
+
+### 📧 Email Integration
+
+- **Resend Integration**: Professional email delivery
+- **Email Templates**: Beautiful HTML email templates
+- **Verification Emails**: Account activation emails
+- **Password Reset Emails**: Secure reset link delivery
 
 ## Dependencies
 
 ### Core Dependencies
 
-- **Go 1.19+**: Programming language and runtime
-- **github.com/lib/pq**: PostgreSQL driver for Go's database/sql package
-- **github.com/joho/godotenv**: Load environment variables from `.env` file
-
-### Standard Library Packages Used
-
-- `net/http`: HTTP server and client functionality
-- `database/sql`: Generic SQL database interface
-- `encoding/json`: JSON encoding and decoding
-- `fmt`: Formatted I/O operations
-- `log`: Logging functionality
-- `os`: Operating system interface (environment variables)
-- `time`: Time-related functionality
+- **Go 1.24+**: Programming language and runtime
+- **github.com/golang-jwt/jwt/v5**: JWT token handling
+- **github.com/resend/resend-go/v2**: Email service integration
+- **golang.org/x/crypto/bcrypt**: Password hashing
+- **golang.org/x/time/rate**: Rate limiting
+- **github.com/lib/pq**: PostgreSQL driver
+- **github.com/joho/godotenv**: Environment variable loading
 
 ## Prerequisites
 
 Before running the application, ensure you have:
 
-1. **Go 1.19 or higher** installed on your system
+1. **Go 1.24 or higher** installed on your system
 
    ```bash
    go version
@@ -44,38 +54,101 @@ Before running the application, ensure you have:
    - Install PostgreSQL locally or use a cloud service
    - Create a database for the application
 
-3. **Environment configuration file** (`.env`)
+3. **Resend API Key** for email functionality
+
+   - Sign up at [resend.com](https://resend.com)
+   - Get your API key from the dashboard
+
+4. **Environment configuration file** (`.env`)
    ```bash
-   # Create a .env file in the project root
-   DATABASE_URL=postgres://username:password@localhost:5432/database_name?sslmode=disable
+   # Copy the example file
+   cp env.example .env
+   # Edit with your actual values
+   ```
+
+## Environment Variables
+
+Create a `.env` file in the project root with the following variables:
+
+```bash
+# Database Configuration
+DATABASE_URL=postgres://username:password@localhost:5432/expenses_tracker?sslmode=disable
+
+# JWT Configuration
+JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+JWT_ACCESS_EXPIRY=15m
+JWT_REFRESH_EXPIRY=168h
+
+# Email Configuration (Resend)
+RESEND_API_KEY=re_xxxxxxxxxxxxx
+FROM_EMAIL=noreply@yourdomain.com
+
+# Application Configuration
+APP_URL=http://localhost:8080
+```
+
+## Database Setup
+
+1. **Create the database**:
+
+   ```sql
+   CREATE DATABASE expenses_tracker;
+   ```
+
+2. **Run the migration**:
+
+   ```bash
+   # Connect to your PostgreSQL database and run:
+   psql -d expenses_tracker -f migrations/001_auth_tables.sql
+   ```
+
+   Or manually execute the SQL from `migrations/001_auth_tables.sql`:
+
+   ```sql
+   -- Create users table
+   CREATE TABLE users (
+       id SERIAL PRIMARY KEY,
+       email VARCHAR(255) UNIQUE NOT NULL,
+       password_hash VARCHAR(255) NOT NULL,
+       email_verified BOOLEAN DEFAULT FALSE,
+       verification_token VARCHAR(255),
+       verification_token_expires TIMESTAMP,
+       reset_token VARCHAR(255),
+       reset_token_expires TIMESTAMP,
+       failed_login_attempts INTEGER DEFAULT 0,
+       locked_until TIMESTAMP,
+       created_at TIMESTAMP DEFAULT NOW(),
+       updated_at TIMESTAMP DEFAULT NOW()
+   );
+
+   -- Create refresh_tokens table
+   CREATE TABLE refresh_tokens (
+       id SERIAL PRIMARY KEY,
+       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+       token VARCHAR(255) UNIQUE NOT NULL,
+       expires_at TIMESTAMP NOT NULL,
+       created_at TIMESTAMP DEFAULT NOW()
+   );
+
+   -- Add user_id to existing transaction table
+   ALTER TABLE transaction ADD COLUMN user_id INTEGER REFERENCES users(id);
+
+   -- Create indexes
+   CREATE INDEX idx_users_email ON users(email);
+   CREATE INDEX idx_refresh_tokens_token ON refresh_tokens(token);
+   CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+   CREATE INDEX idx_transaction_user_id ON transaction(user_id);
    ```
 
 ## Running the Application
 
-1. **Set up the database**:
-
-   ```sql
-   -- Connect to your PostgreSQL database and run:
-   CREATE TABLE transaction (
-       id SERIAL PRIMARY KEY,
-       amount DECIMAL(10,2) NOT NULL
-   );
-   ```
-
-2. **Configure environment variables**:
-
-   ```bash
-   # Create .env file in the project root
-   echo "DATABASE_URL=postgres://username:password@localhost:5432/your_database?sslmode=disable" > .env
-   ```
-
-3. **Install dependencies**:
+1. **Install dependencies**:
 
    ```bash
    go mod download
    ```
 
-4. **Start the server**:
+2. **Start the server**:
 
    ```bash
    go run cmd/server/main.go
@@ -88,7 +161,7 @@ Before running the application, ensure you have:
    ./expenses-tracker
    ```
 
-5. **Verify the application is running**:
+3. **Verify the application is running**:
 
    ```bash
    curl http://localhost:8080/status
@@ -104,31 +177,251 @@ Before running the application, ensure you have:
    }
    ```
 
-### Environment Variables
+## API Endpoints
 
-The application uses the following environment variable:
+### Public Endpoints (No Authentication Required)
 
-- `DATABASE_URL`: PostgreSQL connection string
-  - Format: `postgres://username:password@host:port/database?sslmode=mode`
-  - Example: `postgres://user:pass@localhost:5432/expenses?sslmode=disable`
+#### Health Check
 
-### Server Configuration
+```bash
+GET /status
+```
 
-The HTTP server is configured with the following timeouts:
+#### User Registration
 
-- **Read Timeout**: 5 seconds
-- **Write Timeout**: 10 seconds
-- **Idle Timeout**: 120 seconds
-- **Port**: 8080
+```bash
+POST /auth/register
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!"
+}
+```
+
+#### User Login
+
+```bash
+POST /auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!"
+}
+```
+
+#### Email Verification
+
+```bash
+GET /auth/verify-email?token=verification_token_here
+```
+
+#### Resend Verification Email
+
+```bash
+POST /auth/resend-verification
+Content-Type: application/json
+
+{
+  "email": "user@example.com"
+}
+```
+
+#### Forgot Password
+
+```bash
+POST /auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "user@example.com"
+}
+```
+
+#### Reset Password
+
+```bash
+POST /auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "reset_token_here",
+  "new_password": "NewSecurePass123!"
+}
+```
+
+#### Refresh Token
+
+```bash
+POST /auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "refresh_token_here"
+}
+```
+
+### Protected Endpoints (Authentication Required)
+
+All protected endpoints require the `Authorization` header:
+
+```
+Authorization: Bearer your_access_token_here
+```
+
+#### Logout
+
+```bash
+POST /auth/logout
+Authorization: Bearer your_access_token_here
+Content-Type: application/json
+
+{
+  "refresh_token": "refresh_token_here"
+}
+```
+
+#### Get Transactions
+
+```bash
+GET /transactions
+Authorization: Bearer your_access_token_here
+```
+
+#### Create Transaction
+
+```bash
+POST /transaction
+Authorization: Bearer your_access_token_here
+Content-Type: application/json
+
+{
+  "amount": 25.50
+}
+```
+
+## Security Features
+
+### Password Requirements
+
+- Minimum 8 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one number
+- At least one special character
+- No more than 3 repeated characters in a row
+- No common weak passwords
+
+### Rate Limiting
+
+- **Login**: 5 requests per minute per IP
+- **Registration**: 3 requests per hour per IP
+- **Password Reset**: 3 requests per hour per IP
+- **Verification Resend**: 5 requests per hour per IP
+
+### Account Security
+
+- **Account Lockout**: 5 failed login attempts = 15 minute lockout
+- **Email Verification**: Required before login
+- **Token Expiry**: Access tokens expire in 15 minutes, refresh tokens in 7 days
+- **Secure Storage**: All passwords hashed with bcrypt (cost factor 12)
+
+## Example Usage
+
+### Complete Registration and Login Flow
+
+1. **Register a new user**:
+
+   ```bash
+   curl -X POST http://localhost:8080/auth/register \
+     -H "Content-Type: application/json" \
+     -d '{"email": "test@example.com", "password": "SecurePass123!"}'
+   ```
+
+2. **Check your email** for the verification link
+
+3. **Verify your email** by clicking the link or using the token:
+
+   ```bash
+   curl "http://localhost:8080/auth/verify-email?token=your_verification_token"
+   ```
+
+4. **Login**:
+
+   ```bash
+   curl -X POST http://localhost:8080/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"email": "test@example.com", "password": "SecurePass123!"}'
+   ```
+
+5. **Use the access token** to create a transaction:
+
+   ```bash
+   curl -X POST http://localhost:8080/transaction \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer your_access_token_here" \
+     -d '{"amount": 25.50}'
+   ```
+
+6. **Get your transactions**:
+   ```bash
+   curl -X GET http://localhost:8080/transactions \
+     -H "Authorization: Bearer your_access_token_here"
+   ```
 
 ## Development
 
+### Project Structure
+
+```
+expenses-tracker-go/
+├── cmd/
+│   └── server/
+│       └── main.go              # Application entry point
+├── internal/
+│   ├── auth/
+│   │   ├── jwt.go              # JWT token management
+│   │   ├── password.go         # Password hashing and validation
+│   │   └── middleware.go       # Authentication middleware
+│   ├── email/
+│   │   └── resend.go           # Email service integration
+│   ├── handlers/
+│   │   ├── handlers.go         # Transaction handlers
+│   │   ├── auth_handlers.go    # Authentication handlers
+│   │   ├── auth_models.go      # Authentication models
+│   │   └── models.go           # Transaction models
+│   └── ratelimit/
+│       └── ratelimit.go        # Rate limiting middleware
+├── migrations/
+│   └── 001_auth_tables.sql     # Database migration
+├── env.example                 # Environment variables template
+├── go.mod                      # Go module file
+└── README.md                   # This file
+```
+
 ### Adding New Features
 
-1. Add new handlers in `internal/handlers/handlers.go`
+1. Add new handlers in `internal/handlers/`
 2. Define new models in `internal/handlers/models.go`
 3. Register routes in `cmd/server/main.go`
 4. Update database schema as needed
+5. Add tests for new functionality
+
+## Testing the Implementation
+
+After implementation, test the complete flow:
+
+1. ✅ Register a new user → Check email for verification link
+2. ✅ Attempt login before verification → Should fail
+3. ✅ Verify email → Click link or use token
+4. ✅ Login → Receive access + refresh tokens
+5. ✅ Access protected route with token
+6. ✅ Test wrong password 5 times → Account locks
+7. ✅ Request password reset → Check email
+8. ✅ Reset password with token
+9. ✅ Test refresh token endpoint
+10. ✅ Logout → Token invalidated
 
 ## License
 
