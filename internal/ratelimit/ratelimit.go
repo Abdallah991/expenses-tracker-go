@@ -123,8 +123,8 @@ var (
 	// LoginRateLimit: 5 requests per minute (for login attempts)
 	LoginRateLimit = NewRateLimitManager(rate.Every(time.Minute/5), 5)
 
-	// RegistrationRateLimit: 3 requests per hour (for registration)
-	RegistrationRateLimit = NewRateLimitManager(rate.Every(time.Hour/3), 3)
+	// RegistrationRateLimit: 10 requests per hour (for registration)
+	RegistrationRateLimit = NewRateLimitManager(rate.Every(time.Hour/10), 10)
 
 	// PasswordResetRateLimit: 3 requests per hour (for password reset)
 	PasswordResetRateLimit = NewRateLimitManager(rate.Every(time.Hour/3), 3)
