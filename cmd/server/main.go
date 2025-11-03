@@ -44,6 +44,7 @@ func main() {
 	mux.HandleFunc("/auth/verify-email", handlers.VerifyEmailHandler)
 	mux.Handle("/auth/resend-verification", ratelimit.VerificationResendRateLimitMiddleware()(http.HandlerFunc(handlers.ResendVerificationHandler)))
 	mux.Handle("/auth/forgot-password", ratelimit.PasswordResetRateLimitMiddleware()(http.HandlerFunc(handlers.ForgotPasswordHandler)))
+	mux.HandleFunc("/auth/reset-password-redirect", handlers.RedirectResetPasswordHandler)
 	mux.HandleFunc("/auth/reset-password", handlers.ResetPasswordHandler)
 	mux.HandleFunc("/auth/refresh", handlers.RefreshTokenHandler)
 

@@ -7,7 +7,9 @@ import (
 	"expenses-tracker-go/internal/email"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -416,6 +418,171 @@ func ForgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(SuccessResponse{
 		Message: "If the email exists, a password reset link has been sent.",
 	})
+}
+
+// isMobileDevice detects if the request is from a mobile device
+func isMobileDevice(userAgent string) bool {
+	userAgent = strings.ToLower(userAgent)
+	mobileKeywords := []string{
+		"android", "iphone", "ipad", "ipod", "blackberry",
+		"windows phone", "mobile", "opera mini", "iemobile",
+	}
+	for _, keyword := range mobileKeywords {
+		if strings.Contains(userAgent, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+// RedirectResetPasswordHandler handles password reset redirect for both mobile and web
+func RedirectResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErrorResponse(w, http.StatusMethodNotAllowed, "Method not allowed", "Only GET is supported")
+		return
+	}
+
+	// Extract token from query parameter
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		writeErrorResponse(w, http.StatusBadRequest, "Token required", "Please provide a reset token")
+		return
+	}
+
+	// Verify reset token exists and is valid
+	var userID int
+	err := DB.QueryRow(`
+		SELECT id FROM users 
+		WHERE reset_token = $1 
+		AND reset_token_expires > NOW()
+	`, token).Scan(&userID)
+
+	if err == sql.ErrNoRows {
+		writeErrorResponse(w, http.StatusBadRequest, "Invalid or expired reset token", "")
+		return
+	} else if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "Database error", "Failed to verify reset token")
+		return
+	}
+
+	// Get user agent to detect mobile devices
+	userAgent := r.Header.Get("User-Agent")
+	isMobile := isMobileDevice(userAgent)
+
+	// Get deep link scheme from environment
+	deepLinkScheme := os.Getenv("MOBILE_DEEP_LINK_SCHEME")
+	if deepLinkScheme == "" {
+		deepLinkScheme = "myexpenses://"
+	}
+
+	// For mobile devices, redirect to custom scheme
+	if isMobile {
+		deepLinkURL := fmt.Sprintf("%sreset-password?token=%s", deepLinkScheme, token)
+		http.Redirect(w, r, deepLinkURL, http.StatusFound)
+		return
+	}
+
+	// For web browsers, serve an HTML page with redirect and form fallback
+	appURL := os.Getenv("APP_URL")
+	if appURL == "" {
+		appURL = "http://localhost:8080"
+	}
+
+	// Serve HTML page that redirects to custom scheme and provides fallback form
+	htmlContent := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Reset Password - Expenses Tracker</title>
+	<style>
+		body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 50px auto; padding: 20px; }
+		.container { background-color: #f9f9f9; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+		.header { background-color: #f44336; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; margin: -30px -30px 20px -30px; }
+		.button { display: inline-block; padding: 12px 24px; background-color: #f44336; color: white; text-decoration: none; border-radius: 4px; margin: 10px 5px; cursor: pointer; border: none; font-size: 16px; }
+		.button:hover { background-color: #d32f2f; }
+		.button-secondary { background-color: #2196F3; }
+		.button-secondary:hover { background-color: #1976D2; }
+		.warning { background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 4px; margin: 20px 0; }
+		.form-group { margin: 20px 0; }
+		label { display: block; margin-bottom: 5px; font-weight: bold; }
+		input[type="password"] { width: 100%%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; box-sizing: border-box; }
+		.hidden { display: none; }
+	</style>
+	<script>
+		// Try to open mobile app immediately
+		window.location.href = "%sreset-password?token=%s";
+		
+		// If app doesn't open, show form after 2 seconds
+		setTimeout(function() {
+			document.getElementById('resetForm').classList.remove('hidden');
+		}, 2000);
+	</script>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1>Reset Your Password</h1>
+		</div>
+		<div id="redirecting" style="text-align: center; padding: 20px;">
+			<p>Redirecting to app...</p>
+			<p>If the app doesn't open, use the form below.</p>
+		</div>
+		<div id="resetForm" class="hidden">
+			<p>Please enter your new password:</p>
+			<form id="passwordResetForm" onsubmit="submitReset(event)">
+				<input type="hidden" id="resetToken" value="%s">
+				<div class="form-group">
+					<label for="new_password">New Password:</label>
+					<input type="password" id="new_password" name="new_password" required minlength="8">
+				</div>
+				<button type="submit" class="button">Reset Password</button>
+			</form>
+			<div id="result" style="margin-top: 20px;"></div>
+			<div class="warning">
+				<p><strong>Note:</strong> For best security, please use the mobile app or API endpoint directly.</p>
+			</div>
+		</div>
+		<script>
+			function submitReset(event) {
+				event.preventDefault();
+				var token = document.getElementById('resetToken').value;
+				var password = document.getElementById('new_password').value;
+				var resultDiv = document.getElementById('result');
+				
+				fetch('%s/auth/reset-password', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({
+						token: token,
+						new_password: password
+					})
+				})
+				.then(response => response.json())
+				.then(data => {
+					if (data.message) {
+						resultDiv.innerHTML = '<div style="background-color: #d4edda; color: #155724; padding: 15px; border-radius: 4px; margin-top: 20px;"><strong>Success!</strong> ' + data.message + '</div>';
+						document.getElementById('passwordResetForm').style.display = 'none';
+					} else if (data.error) {
+						resultDiv.innerHTML = '<div style="background-color: #f8d7da; color: #721c24; padding: 15px; border-radius: 4px; margin-top: 20px;"><strong>Error:</strong> ' + data.error + (data.details ? ' - ' + data.details : '') + '</div>';
+					}
+				})
+				.catch(error => {
+					resultDiv.innerHTML = '<div style="background-color: #f8d7da; color: #721c24; padding: 15px; border-radius: 4px; margin-top: 20px;"><strong>Error:</strong> Failed to reset password. Please try again.</div>';
+				});
+			}
+		</script>
+	</div>
+</body>
+</html>
+`, deepLinkScheme, token, token, appURL)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(htmlContent))
 }
 
 // ResetPasswordHandler handles password reset

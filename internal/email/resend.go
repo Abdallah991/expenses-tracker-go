@@ -9,9 +9,10 @@ import (
 
 // EmailService handles sending emails via Resend
 type EmailService struct {
-	client    *resend.Client
-	fromEmail string
-	appURL    string
+	client         *resend.Client
+	fromEmail      string
+	appURL         string
+	deepLinkScheme string
 }
 
 // NewEmailService creates a new email service instance
@@ -31,12 +32,18 @@ func NewEmailService() (*EmailService, error) {
 		appURL = "http://localhost:8080"
 	}
 
+	deepLinkScheme := os.Getenv("MOBILE_DEEP_LINK_SCHEME")
+	if deepLinkScheme == "" {
+		deepLinkScheme = "myexpenses://"
+	}
+
 	client := resend.NewClient(apiKey)
 
 	return &EmailService{
-		client:    client,
-		fromEmail: fromEmail,
-		appURL:    appURL,
+		client:         client,
+		fromEmail:      fromEmail,
+		appURL:         appURL,
+		deepLinkScheme: deepLinkScheme,
 	}, nil
 }
 
@@ -116,7 +123,10 @@ func (es *EmailService) SendVerificationEmail(to, token string) error {
 
 // SendPasswordResetEmail sends a password reset email
 func (es *EmailService) SendPasswordResetEmail(to, token string) error {
-	resetURL := fmt.Sprintf("%s/auth/reset-password?token=%s", es.appURL, token)
+	// Use redirect page that handles both mobile and web
+	resetURL := fmt.Sprintf("%s/auth/reset-password-redirect?token=%s", es.appURL, token)
+	// Deep link for mobile app
+	deepLinkURL := fmt.Sprintf("%sreset-password?token=%s", es.deepLinkScheme, token)
 
 	subject := "Reset Your Password - Expenses Tracker"
 	htmlContent := fmt.Sprintf(`
@@ -142,14 +152,20 @@ func (es *EmailService) SendPasswordResetEmail(to, token string) error {
 				</div>
 				<div class="content">
 					<h2>Reset Your Password</h2>
-					<p>We received a request to reset your password for your Expenses Tracker account. If you made this request, click the button below to reset your password:</p>
+					<p>We received a request to reset your password for your Expenses Tracker account. If you made this request, choose one of the options below:</p>
 					
-					<div style="text-align: center;">
-						<a href="%s" class="button">Reset Password</a>
+					<div style="text-align: center; margin: 20px 0;">
+						<a href="%s" class="button" style="margin-right: 10px;">Open in App</a>
+						<a href="%s" class="button" style="background-color: #2196F3;">Reset in Browser</a>
 					</div>
 					
-					<p>If the button doesn't work, you can copy and paste this link into your browser:</p>
-					<p style="word-break: break-all; background-color: #eee; padding: 10px; border-radius: 4px;">%s</p>
+					<p>If the buttons don't work, you can copy and paste one of these links:</p>
+					<p style="word-break: break-all; background-color: #eee; padding: 10px; border-radius: 4px; margin: 10px 0;">
+						<strong>Mobile App:</strong> %s
+					</p>
+					<p style="word-break: break-all; background-color: #eee; padding: 10px; border-radius: 4px; margin: 10px 0;">
+						<strong>Web Browser:</strong> %s
+					</p>
 					
 					<div class="warning">
 						<p><strong>Security Notice:</strong></p>
@@ -168,14 +184,15 @@ func (es *EmailService) SendPasswordResetEmail(to, token string) error {
 			</div>
 		</body>
 		</html>
-	`, resetURL, resetURL)
+	`, deepLinkURL, resetURL, deepLinkURL, resetURL)
 
 	textContent := fmt.Sprintf(`
 		Password Reset Request
 		
-		We received a request to reset your password for your Expenses Tracker account. If you made this request, visit this link to reset your password:
+		We received a request to reset your password for your Expenses Tracker account. If you made this request, use one of these links:
 		
-		%s
+		Mobile App: %s
+		Web Browser: %s
 		
 		Security Notice:
 		- This password reset link will expire in 1 hour for security reasons.
@@ -185,7 +202,7 @@ func (es *EmailService) SendPasswordResetEmail(to, token string) error {
 		For your security, if you didn't request this password reset, please contact our support team immediately.
 		
 		This email was sent from Expenses Tracker. Please do not reply to this email.
-	`, resetURL)
+	`, deepLinkURL, resetURL)
 
 	params := &resend.SendEmailRequest{
 		From:    es.fromEmail,
