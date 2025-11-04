@@ -8,14 +8,14 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	// add these specific imports
 	"expenses-tracker-go/internal/auth"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
 )
 
 // Global database connection pool (initialize in main)
@@ -62,15 +62,48 @@ func InitDB() {
 		log.Fatal("FATAL: DATABASE_URL environment variable not set.")
 	}
 
-	// Force IPv4 connection for Render compatibility
-	connStr = ensureIPv4Connection(connStr)
-
 	fmt.Println("Connecting to database...")
 
-	var err error
-	DB, err = sql.Open("postgres", connStr)
+	// Parse connection string using pgx
+	config, err := pgx.ParseConfig(connStr)
 	if err != nil {
-		log.Fatalf("Failed to open database connection: %v", err)
+		log.Fatalf("Failed to parse connection string: %v", err)
+	}
+
+	// Force IPv4 resolution if hostname is used (for Render compatibility)
+	if config.Host != "" {
+		// Check if it's a hostname (not already an IP address)
+		if net.ParseIP(config.Host) == nil {
+			// It's a hostname, try to resolve to IPv4
+			ipAddr, resolveErr := net.ResolveIPAddr("ip4", config.Host)
+			if resolveErr == nil {
+				fmt.Printf("Resolved %s to IPv4: %s\n", config.Host, ipAddr.IP.String())
+				config.Host = ipAddr.IP.String()
+			} else {
+				// If IPv4-only resolution fails, try regular lookup
+				fmt.Printf("IPv4-only resolution failed, trying regular lookup: %v\n", resolveErr)
+				ips, lookupErr := net.LookupIP(config.Host)
+				if lookupErr == nil {
+					// Find IPv4 address
+					for _, ip := range ips {
+						if ip.To4() != nil {
+							fmt.Printf("Resolved %s to IPv4: %s\n", config.Host, ip.To4().String())
+							config.Host = ip.To4().String()
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Convert pgx config back to connection string for stdlib
+	connStr = stdlib.RegisterConnConfig(config)
+
+	var dbErr error
+	DB, dbErr = sql.Open("pgx", connStr)
+	if dbErr != nil {
+		log.Fatalf("Failed to open database connection: %v", dbErr)
 	}
 
 	// Set connection pool settings
@@ -92,68 +125,6 @@ func InitDB() {
 	}
 
 	log.Fatalf("Failed to connect to database after %d attempts: %v", maxRetries, err)
-}
-
-// ensureIPv4Connection resolves hostname to IPv4 and rebuilds connection string
-// This fixes Render's IPv6 connectivity issues with Supabase
-func ensureIPv4Connection(connStr string) string {
-	// Extract hostname from connection string
-	// Format: postgresql://user:pass@host:port/db?params or postgres://user:pass@host:port/db?params
-	parts := strings.Split(connStr, "@")
-	if len(parts) != 2 {
-		fmt.Println("Warning: Could not parse connection string format, using original")
-		return connStr // Return original if we can't parse
-	}
-
-	hostPart := parts[1]
-	hostAndPath := strings.Split(hostPart, "/")
-	if len(hostAndPath) < 2 {
-		fmt.Println("Warning: Could not parse host from connection string, using original")
-		return connStr
-	}
-
-	hostPort := strings.Split(hostAndPath[0], ":")
-	hostname := hostPort[0]
-	port := "5432"
-	if len(hostPort) > 1 {
-		// Extract port, removing query params if present
-		portPart := strings.Split(hostPort[1], "?")[0]
-		if portPart != "" {
-			port = portPart
-		}
-	}
-
-	// Resolve hostname to IP addresses
-	ips, err := net.LookupIP(hostname)
-	if err != nil {
-		fmt.Printf("Warning: Could not resolve %s: %v, using original connection string\n", hostname, err)
-		return connStr
-	}
-
-	// Find IPv4 address
-	var ipv4 net.IP
-	for _, ip := range ips {
-		if ip.To4() != nil {
-			ipv4 = ip.To4()
-			break
-		}
-	}
-
-	if ipv4 == nil {
-		fmt.Printf("Warning: No IPv4 address found for %s, using original connection string\n", hostname)
-		return connStr
-	}
-
-	// Rebuild connection string with IPv4 address
-	newHostPort := fmt.Sprintf("%s:%s", ipv4.String(), port)
-	newConnStr := strings.Replace(connStr, hostname+":"+port, newHostPort, 1)
-	// Also handle case where port might not be in the original string
-	if !strings.Contains(connStr, hostname+":") {
-		newConnStr = strings.Replace(connStr, hostname, newHostPort, 1)
-	}
-
-	fmt.Printf("Resolved %s to IPv4: %s\n", hostname, ipv4.String())
-	return newConnStr
 }
 
 // GetTransactionsHandler fetches all transactions from the database for the authenticated user.

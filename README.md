@@ -36,7 +36,7 @@ A secure REST API built with Go for tracking financial transactions with JWT-bas
 - **github.com/resend/resend-go/v2**: Email service integration
 - **golang.org/x/crypto/bcrypt**: Password hashing
 - **golang.org/x/time/rate**: Rate limiting
-- **github.com/lib/pq**: PostgreSQL driver
+- **github.com/jackc/pgx/v5**: PostgreSQL driver (recommended by Supabase)
 - **github.com/joho/godotenv**: Environment variable loading
 
 ## Prerequisites
