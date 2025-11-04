@@ -4,8 +4,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
+	"net"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	// add these specific imports
 	"expenses-tracker-go/internal/auth"
@@ -52,29 +56,104 @@ func InitDB() {
 		// that uses real environment vars.
 		fmt.Println("Could not load .env file:", e)
 	}
-	// ! its not connecting
+
 	connStr := os.Getenv("DATABASE_URL")
-
-	fmt.Println("This is the database URL", connStr)
-
 	if connStr == "" {
-		// Log a fatal error or panic if the connection string is missing
-		fmt.Println("FATAL: DATABASE_URL environment variable not set.")
-		// In a real app, you might want to use log.Fatal(err) here
+		log.Fatal("FATAL: DATABASE_URL environment variable not set.")
 	}
+
+	// Force IPv4 connection for Render compatibility
+	connStr = ensureIPv4Connection(connStr)
+
+	fmt.Println("Connecting to database...")
 
 	var err error
 	DB, err = sql.Open("postgres", connStr)
 	if err != nil {
-		panic(err) // Panic if connection setup fails
+		log.Fatalf("Failed to open database connection: %v", err)
 	}
 
-	// Ping to verify the connection is alive
-	if err = DB.Ping(); err != nil {
-		panic(err) // Panic if the initial connection is bad
+	// Set connection pool settings
+	DB.SetMaxOpenConns(25)
+	DB.SetMaxIdleConns(5)
+	DB.SetConnMaxLifetime(5 * time.Minute)
+
+	// Ping with retry logic
+	maxRetries := 5
+	for i := 0; i < maxRetries; i++ {
+		if err = DB.Ping(); err == nil {
+			fmt.Println("✅ Successfully connected to the PostgreSQL database!")
+			return
+		}
+		fmt.Printf("Database ping attempt %d/%d failed: %v\n", i+1, maxRetries, err)
+		if i < maxRetries-1 {
+			time.Sleep(2 * time.Second)
+		}
 	}
 
-	fmt.Println("✅ Successfully connected to the PostgreSQL database!")
+	log.Fatalf("Failed to connect to database after %d attempts: %v", maxRetries, err)
+}
+
+// ensureIPv4Connection resolves hostname to IPv4 and rebuilds connection string
+// This fixes Render's IPv6 connectivity issues with Supabase
+func ensureIPv4Connection(connStr string) string {
+	// Extract hostname from connection string
+	// Format: postgresql://user:pass@host:port/db?params or postgres://user:pass@host:port/db?params
+	parts := strings.Split(connStr, "@")
+	if len(parts) != 2 {
+		fmt.Println("Warning: Could not parse connection string format, using original")
+		return connStr // Return original if we can't parse
+	}
+
+	hostPart := parts[1]
+	hostAndPath := strings.Split(hostPart, "/")
+	if len(hostAndPath) < 2 {
+		fmt.Println("Warning: Could not parse host from connection string, using original")
+		return connStr
+	}
+
+	hostPort := strings.Split(hostAndPath[0], ":")
+	hostname := hostPort[0]
+	port := "5432"
+	if len(hostPort) > 1 {
+		// Extract port, removing query params if present
+		portPart := strings.Split(hostPort[1], "?")[0]
+		if portPart != "" {
+			port = portPart
+		}
+	}
+
+	// Resolve hostname to IP addresses
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		fmt.Printf("Warning: Could not resolve %s: %v, using original connection string\n", hostname, err)
+		return connStr
+	}
+
+	// Find IPv4 address
+	var ipv4 net.IP
+	for _, ip := range ips {
+		if ip.To4() != nil {
+			ipv4 = ip.To4()
+			break
+		}
+	}
+
+	if ipv4 == nil {
+		fmt.Printf("Warning: No IPv4 address found for %s, using original connection string\n", hostname)
+		return connStr
+	}
+
+	// Rebuild connection string with IPv4 address
+	newHostPort := fmt.Sprintf("%s:%s", ipv4.String(), port)
+	newConnStr := strings.Replace(connStr, hostname+":"+port, newHostPort, 1)
+	// Also handle case where port might not be in the original string
+	if !strings.Contains(connStr, hostname+":") {
+		newConnStr = strings.Replace(connStr, hostname, newHostPort, 1)
+	}
+
+	fmt.Printf("Resolved %s to IPv4: %s\n", hostname, ipv4.String())
+	return newConnStr
 }
 
 // GetTransactionsHandler fetches all transactions from the database for the authenticated user.
