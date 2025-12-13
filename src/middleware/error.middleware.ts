@@ -35,7 +35,7 @@ export function errorHandler(
 
   // Send generic error response for unexpected errors
   res.status(500).json({
-    error: "InternalServerError",
+    error: "InternalServerError " + err,
     message: process.env.NODE_ENV === "production" ? "An unexpected error occurred" : err.message,
   });
 }
