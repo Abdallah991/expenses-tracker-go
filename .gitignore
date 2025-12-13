@@ -1,20 +1,41 @@
-# Binaries for programs and plugins
-*.exe
-*.dll
-*.so
-*.dylib
-
-# Test binaries
-*test
-
-# Output files from 'go build'
-/bin/
-
 # Dependencies
-/vendor/
+node_modules/
+package-lock.json
+yarn.lock
 
-# Go module cache (usually in $GOPATH/pkg/mod)
-/pkg/
+# Build output
+dist/
+build/
+*.tsbuildinfo
 
-# Environment-specific files
+# Environment variables
 .env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

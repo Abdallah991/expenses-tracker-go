@@ -1,6 +1,6 @@
-# Expenses Tracker Go
+# Expenses Tracker API
 
-A secure REST API built with Go for tracking financial transactions with JWT-based authentication, email verification, and advanced security features.
+A secure REST API built with Express & TypeScript for tracking financial transactions with JWT-based authentication, email verification, and advanced security features.
 
 ## Features
 
@@ -31,22 +31,24 @@ A secure REST API built with Go for tracking financial transactions with JWT-bas
 
 ### Core Dependencies
 
-- **Go 1.24+**: Programming language and runtime
-- **github.com/golang-jwt/jwt/v5**: JWT token handling
-- **github.com/resend/resend-go/v2**: Email service integration
-- **golang.org/x/crypto/bcrypt**: Password hashing
-- **golang.org/x/time/rate**: Rate limiting
-- **github.com/jackc/pgx/v5**: PostgreSQL driver (recommended by Supabase)
-- **github.com/joho/godotenv**: Environment variable loading
+- **Node.js 18+**: JavaScript runtime
+- **TypeScript 5.3+**: Type-safe JavaScript
+- **Express 4.18+**: Web framework
+- **jsonwebtoken**: JWT token handling
+- **resend**: Email service integration
+- **bcrypt**: Password hashing
+- **express-rate-limit**: Rate limiting
+- **pg**: PostgreSQL driver
+- **dotenv**: Environment variable loading
 
 ## Prerequisites
 
 Before running the application, ensure you have:
 
-1. **Go 1.24 or higher** installed on your system
+1. **Node.js 18 or higher** installed on your system
 
    ```bash
-   go version
+   node --version
    ```
 
 2. **PostgreSQL database** running and accessible
@@ -85,6 +87,10 @@ FROM_EMAIL=noreply@yourdomain.com
 
 # Application Configuration
 APP_URL=http://localhost:8080
+PORT=8080
+
+# Mobile Deep Link Configuration
+MOBILE_DEEP_LINK_SCHEME=myexpenses://
 ```
 
 ## Database Setup
@@ -145,23 +151,26 @@ APP_URL=http://localhost:8080
 1. **Install dependencies**:
 
    ```bash
-   go mod download
+   npm install
    ```
 
-2. **Start the server**:
+2. **Build the TypeScript code**:
 
    ```bash
-   go run cmd/server/main.go
+   npm run build
    ```
 
-   Or build and run:
+3. **Start the server**:
 
    ```bash
-   go build -o expenses-tracker cmd/server/main.go
-   ./expenses-tracker
+   # Production
+   npm start
+
+   # Development (with hot reload)
+   npm run dev
    ```
 
-3. **Verify the application is running**:
+4. **Verify the application is running**:
 
    ```bash
    curl http://localhost:8080/status
@@ -172,7 +181,7 @@ APP_URL=http://localhost:8080
    ```json
    {
      "status": "live",
-     "application": "Go Simple Web Server",
+     "application": "Express TypeScript Web Server",
      "message": "Application is live and running!"
    }
    ```
@@ -316,7 +325,7 @@ Content-Type: application/json
 ### Rate Limiting
 
 - **Login**: 5 requests per minute per IP
-- **Registration**: 3 requests per hour per IP
+- **Registration**: 10 requests per hour per IP
 - **Password Reset**: 3 requests per hour per IP
 - **Verification Resend**: 5 requests per hour per IP
 
@@ -376,35 +385,37 @@ Content-Type: application/json
 
 ```
 expenses-tracker-go/
-├── cmd/
-│   └── server/
-│       └── main.go              # Application entry point
-├── internal/
+├── src/
+│   ├── server/
+│   │   └── index.ts              # Application entry point
+│   ├── config/
+│   │   └── database.ts           # Database connection
 │   ├── auth/
-│   │   ├── jwt.go              # JWT token management
-│   │   ├── password.go         # Password hashing and validation
-│   │   └── middleware.go       # Authentication middleware
+│   │   ├── jwt.ts                # JWT token management
+│   │   ├── password.ts           # Password hashing and validation
+│   │   └── middleware.ts         # Authentication middleware
 │   ├── email/
-│   │   └── resend.go           # Email service integration
+│   │   └── resend.ts             # Email service integration
 │   ├── handlers/
-│   │   ├── handlers.go         # Transaction handlers
-│   │   ├── auth_handlers.go    # Authentication handlers
-│   │   ├── auth_models.go      # Authentication models
-│   │   └── models.go           # Transaction models
-│   └── ratelimit/
-│       └── ratelimit.go        # Rate limiting middleware
+│   │   ├── transactionHandlers.ts # Transaction handlers
+│   │   └── authHandlers.ts       # Authentication handlers
+│   ├── ratelimit/
+│   │   └── ratelimit.ts          # Rate limiting middleware
+│   └── types/
+│       └── models.ts             # TypeScript type definitions
 ├── migrations/
-│   └── 001_auth_tables.sql     # Database migration
-├── env.example                 # Environment variables template
-├── go.mod                      # Go module file
-└── README.md                   # This file
+│   └── 001_auth_tables.sql       # Database migration
+├── env.example                    # Environment variables template
+├── package.json                  # Node.js dependencies
+├── tsconfig.json                  # TypeScript configuration
+└── README.md                      # This file
 ```
 
 ### Adding New Features
 
-1. Add new handlers in `internal/handlers/`
-2. Define new models in `internal/handlers/models.go`
-3. Register routes in `cmd/server/main.go`
+1. Add new handlers in `src/handlers/`
+2. Define new types in `src/types/models.ts`
+3. Register routes in `src/server/index.ts`
 4. Update database schema as needed
 5. Add tests for new functionality
 
