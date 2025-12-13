@@ -83,7 +83,7 @@ export class AuthController {
       }
 
       // Verify reset token exists and is valid
-      const authService = new AuthService();
+      // const authService = new AuthService();
       // We'll need to check the token, but for now just render the HTML
       // The actual validation happens in resetPassword
 

@@ -1,7 +1,7 @@
-import { Pool } from 'pg';
-import { getDB } from '../config/database';
-import { User } from '../types/models';
-import { NotFoundError } from '../utils/errors.util';
+import { Pool } from "pg";
+import { getDB } from "../config/database";
+import { User } from "../types/models";
+// import { NotFoundError } from '../utils/errors.util';
 
 export class UserRepository {
   private db: Pool;
@@ -59,10 +59,7 @@ export class UserRepository {
   }
 
   async emailExists(email: string): Promise<boolean> {
-    const result = await this.db.query(
-      'SELECT id FROM users WHERE email = $1',
-      [email]
-    );
+    const result = await this.db.query("SELECT id FROM users WHERE email = $1", [email]);
     return result.rows.length > 0;
   }
 
@@ -118,11 +115,7 @@ export class UserRepository {
     return result.rows[0].id;
   }
 
-  async updateResetToken(
-    userId: number,
-    resetToken: string,
-    resetExpires: Date
-  ): Promise<void> {
+  async updateResetToken(userId: number, resetToken: string, resetExpires: Date): Promise<void> {
     await this.db.query(
       `UPDATE users 
        SET reset_token = $1, reset_token_expires = $2, updated_at = NOW()
@@ -180,7 +173,7 @@ export class UserRepository {
 
   async checkUserExistsAndVerified(userId: number): Promise<boolean> {
     const result = await this.db.query(
-      'SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND email_verified = true)',
+      "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND email_verified = true)",
       [userId]
     );
     return result.rows[0].exists;
@@ -193,7 +186,9 @@ export class UserRepository {
       password_hash: row.password_hash,
       email_verified: row.email_verified,
       verification_token: row.verification_token,
-      verification_token_expires: row.verification_token_expires ? new Date(row.verification_token_expires) : null,
+      verification_token_expires: row.verification_token_expires
+        ? new Date(row.verification_token_expires)
+        : null,
       reset_token: row.reset_token,
       reset_token_expires: row.reset_token_expires ? new Date(row.reset_token_expires) : null,
       failed_login_attempts: row.failed_login_attempts,
@@ -203,6 +198,3 @@ export class UserRepository {
     };
   }
 }
-
-
-

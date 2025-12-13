@@ -1,6 +1,6 @@
-import { Pool } from 'pg';
-import { getDB } from '../config/database';
-import { RefreshToken } from '../types/models';
+import { Pool } from "pg";
+import { getDB } from "../config/database";
+// import { RefreshToken } from '../types/models';
 
 export class RefreshTokenRepository {
   private db: Pool;
@@ -48,12 +48,6 @@ export class RefreshTokenRepository {
   }
 
   async deleteAllByUserId(userId: number): Promise<void> {
-    await this.db.query(
-      'DELETE FROM refresh_tokens WHERE user_id = $1',
-      [userId]
-    );
+    await this.db.query("DELETE FROM refresh_tokens WHERE user_id = $1", [userId]);
   }
 }
-
-
-
